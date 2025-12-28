@@ -21,6 +21,8 @@ def load_config():
         os.environ['OPENAI_API_KEY'] = config["OpenAIAPIKey"]
         if "LangChainAPIKey" in config:
             os.environ['LANGCHAIN_API_KEY'] = config["LangChainAPIKey"]
+            os.environ['LANGCHAIN_TRACING_V2'] = 'true'
+            os.environ['LANGCHAIN_ENDPOINT'] = 'https://api.smith.langchain.com'
         return config
     except FileNotFoundError:
         st.error("❌ 找不到 config.json 文件，请根据 config.example.json 创建配置文件！")
