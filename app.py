@@ -18,9 +18,16 @@ def load_config():
     try:
         with open("config.json", "r", encoding="utf-8") as f:
             config = json.load(f)
+        
+        # 配置OpenAI API
         os.environ['OPENAI_API_KEY'] = config["OpenAIAPIKey"]
+        
+        # 配置LangSmith追踪
         if "LangChainAPIKey" in config:
+            os.environ['LANGCHAIN_TRACING_V2'] = 'true'
+            os.environ['LANGCHAIN_ENDPOINT'] = 'https://api.smith.langchain.com'
             os.environ['LANGCHAIN_API_KEY'] = config["LangChainAPIKey"]
+        
         return config
     except FileNotFoundError:
         st.error("❌ 找不到 config.json 文件，请根据 config.example.json 创建配置文件！")
@@ -174,4 +181,3 @@ try:
 except Exception as e:
     st.error(f"❌ 系统错误: {str(e)}")
     st.info("请检查：\n- config.json 文件是否存在\n- OpenAI API Key 是否正确\n- CourseMaterials/deep_learning 目录下是否有PDF文件")
-
