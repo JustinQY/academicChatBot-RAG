@@ -18,11 +18,15 @@ def load_config():
     try:
         with open("config.json", "r", encoding="utf-8") as f:
             config = json.load(f)
+        
+        # 配置OpenAI API
         os.environ['OPENAI_API_KEY'] = config["OpenAIAPIKey"]
+        
+        # 配置LangSmith追踪
         if "LangChainAPIKey" in config:
-            os.environ['LANGCHAIN_API_KEY'] = config["LangChainAPIKey"]
             os.environ['LANGCHAIN_TRACING_V2'] = 'true'
             os.environ['LANGCHAIN_ENDPOINT'] = 'https://api.smith.langchain.com'
+            os.environ['LANGCHAIN_API_KEY'] = config["LangChainAPIKey"]
         return config
     except FileNotFoundError:
         st.error("❌ 找不到 config.json 文件，请根据 config.example.json 创建配置文件！")
@@ -104,18 +108,24 @@ try:
         rag_chain, doc_count = initialize_rag()
     st.success(f"✅ 系统已就绪！已加载 {doc_count} 个文档。")
     
+    # 初始化会话状态来保存问答历史
+    if 'qa_history' not in st.session_state:
+        st.session_state.qa_history = []
+    
     # 用户输入
     question = st.text_area(
         "💬 请输入你的问题：",
         placeholder="例如: Can you list some of the hyperparameters in the FFN?",
-        height=100
+        height=100,
+        key="question_input"
     )
     
-    col1, col2 = st.columns([1, 5])
+    col1, col2, col3 = st.columns([1, 1, 4])
     with col1:
         ask_button = st.button("🚀 提问", type="primary", use_container_width=True)
     with col2:
-        if st.button("🗑️ 清除", use_container_width=True):
+        if st.button("🗑️ 清除历史", use_container_width=True):
+            st.session_state.qa_history = []
             st.rerun()
     
     if ask_button:
@@ -124,14 +134,37 @@ try:
                 try:
                     response = rag_chain.invoke(question)
                     
-                    # 显示回答
-                    st.markdown("### 📝 回答：")
+                    # 将当前问答添加到历史记录
+                    from datetime import datetime
+                    qa_entry = {
+                        'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        'question': question.strip(),
+                        'answer': response.content
+                    }
+                    st.session_state.qa_history.append(qa_entry)
+                    
+                    # 显示当前回答
+                    st.markdown("### 📝 当前回答：")
                     st.info(response.content)
                     
                 except Exception as e:
                     st.error(f"❌ 生成回答时出错: {str(e)}")
         else:
             st.warning("⚠️ 请先输入问题")
+    
+    # 显示问答历史记录
+    if st.session_state.qa_history:
+        st.markdown("---")
+        st.markdown("## 📚 问答历史记录")
+        st.caption(f"共 {len(st.session_state.qa_history)} 条记录")
+        
+        # 逆序显示（最新的在上面）
+        for idx, qa in enumerate(reversed(st.session_state.qa_history), 1):
+            with st.expander(f"🕐 {qa['timestamp']} - 问题 #{len(st.session_state.qa_history) - idx + 1}", expanded=(idx == 1)):
+                st.markdown(f"**❓ 问题：**")
+                st.write(qa['question'])
+                st.markdown(f"**💡 回答：**")
+                st.info(qa['answer'])
             
     # 侧边栏
     with st.sidebar:
@@ -145,11 +178,14 @@ try:
         - 💡 基于OpenAI GPT-3.5生成准确答案
         - ⚡ 使用LangChain构建RAG流程
         - 🎯 仅基于课程材料回答，避免虚构信息
+        - 📝 自动保存问答历史记录
         
         **使用说明：**
         1. 在输入框中输入你的问题
         2. 点击"提问"按钮
         3. 等待系统检索并生成答案
+        4. 历史记录会自动保存在下方
+        5. 点击"清除历史"可以清空所有记录
         
         **示例问题：**
         - Can you list some of the hyperparameters in the FFN?
@@ -176,4 +212,3 @@ try:
 except Exception as e:
     st.error(f"❌ 系统错误: {str(e)}")
     st.info("请检查：\n- config.json 文件是否存在\n- OpenAI API Key 是否正确\n- CourseMaterials/deep_learning 目录下是否有PDF文件")
-
