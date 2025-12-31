@@ -69,6 +69,8 @@ class DocumentManager:
         """
         检查文件是否已存在（通过哈希值）
         
+        只检查已成功索引的文件，避免误判正在上传的文件为重复
+        
         Args:
             file_content: 文件内容
             
@@ -79,7 +81,8 @@ class DocumentManager:
         metadata = self._load_metadata()
         
         for file_id, meta in metadata.items():
-            if meta.get('hash') == file_hash:
+            # 只检查已成功索引的文件
+            if meta.get('hash') == file_hash and meta.get('indexed', False):
                 return meta
         return None
     
@@ -209,4 +212,3 @@ class DocumentManager:
         """
         all_metadata = self._load_metadata()
         return all_metadata.get(file_id)
-
