@@ -166,57 +166,68 @@ def main():
         
         # 处理文件上传
         if uploaded_file is not None:
-            with st.spinner("⏳ 正在处理文档..."):
-                # 阶段1: 上传和保存文件
-                with st.status("📥 正在上传文件...", expanded=True) as status:
-                    st.write("验证文件格式和大小...")
-                    success, message, metadata = doc_manager.upload_document(uploaded_file)
-                    
-                    if not success:
-                        status.update(label="❌ 上传失败", state="error")
-                        st.error(message)
-                    else:
-                        st.write("✅ 文件保存成功")
+            # 使用文件名和大小作为唯一标识，防止 st.rerun() 后重复处理
+            file_identifier = f"{uploaded_file.name}_{uploaded_file.size}"
+            
+            # 检查是否已经处理过这个文件
+            if 'last_processed_file' not in st.session_state:
+                st.session_state.last_processed_file = None
+            
+            if st.session_state.last_processed_file != file_identifier:
+                # 标记为正在处理
+                st.session_state.last_processed_file = file_identifier
+                
+                with st.spinner("⏳ 正在处理文档..."):
+                    # 阶段1: 上传和保存文件
+                    with st.status("📥 正在上传文件...", expanded=True) as status:
+                        st.write("验证文件格式和大小...")
+                        success, message, metadata = doc_manager.upload_document(uploaded_file)
                         
-                        # 阶段2: 索引到向量库
-                        st.write("🔢 正在向量化文档...")
-                        index_success, index_message, chunk_count = rag_system.add_user_document(
-                            file_path=metadata['filepath'],
-                            original_filename=metadata['original_filename'],
-                            upload_time=metadata['upload_time'],
-                            file_size=metadata['size']
-                        )
-                        
-                        if index_success:
-                            # 索引成功，保存元数据到持久化存储
-                            save_success, save_error = doc_manager.save_document_metadata(metadata)
-                            
-                            if save_success:
-                                status.update(label="✅ 文档处理完成", state="complete")
-                                st.success(f"🎉 {metadata['original_filename']} 已成功添加到知识库！")
-                                st.info(index_message)
-                                
-                                # 清空上传器（通过 rerun）
-                                st.rerun()
-                            else:
-                                # 元数据保存失败（极少见）
-                                status.update(label="⚠️ 元数据保存失败", state="error")
-                                st.error(f"❌ {save_error}")
-                                st.warning("文档已索引但元数据未保存，可能导致重复上传检测失败")
+                        if not success:
+                            status.update(label="❌ 上传失败", state="error")
+                            st.error(message)
                         else:
-                            # 索引失败，清理已保存的文件
-                            status.update(label="❌ 索引失败", state="error")
-                            st.error(index_message)
-                            st.warning("正在清理已保存的文件...")
+                            st.write("✅ 文件保存成功")
                             
-                            # 删除物理文件（不需要删除元数据，因为还没保存）
-                            file_success, file_error = safe_remove_file(metadata['filepath'])
-                            if file_success:
-                                st.info("✅ 已清理失败的上传")
+                            # 阶段2: 索引到向量库
+                            st.write("🔢 正在向量化文档...")
+                            index_success, index_message, chunk_count = rag_system.add_user_document(
+                                file_path=metadata['filepath'],
+                                original_filename=metadata['original_filename'],
+                                upload_time=metadata['upload_time'],
+                                file_size=metadata['size']
+                            )
+                            
+                            if index_success:
+                                # 索引成功，保存元数据到持久化存储
+                                save_success, save_error = doc_manager.save_document_metadata(metadata)
+                                
+                                if save_success:
+                                    status.update(label="✅ 文档处理完成", state="complete")
+                                    st.success(f"🎉 {metadata['original_filename']} 已成功添加到知识库！")
+                                    st.info(index_message)
+                                    
+                                    # 清空上传器（通过 rerun）
+                                    st.rerun()
+                                else:
+                                    # 元数据保存失败（极少见）
+                                    status.update(label="⚠️ 元数据保存失败", state="error")
+                                    st.error(f"❌ {save_error}")
+                                    st.warning("文档已索引但元数据未保存，可能导致重复上传检测失败")
                             else:
-                                st.warning(f"⚠️ 清理文件时出现问题：{file_error}")
-                            
-                            st.info("💡 提示：请检查文件是否损坏或网络连接是否正常，然后重试。")
+                                # 索引失败，清理已保存的文件
+                                status.update(label="❌ 索引失败", state="error")
+                                st.error(index_message)
+                                st.warning("正在清理已保存的文件...")
+                                
+                                # 删除物理文件（不需要删除元数据，因为还没保存）
+                                file_success, file_error = safe_remove_file(metadata['filepath'])
+                                if file_success:
+                                    st.info("✅ 已清理失败的上传")
+                                else:
+                                    st.warning(f"⚠️ 清理文件时出现问题：{file_error}")
+                                
+                                st.info("💡 提示：请检查文件是否损坏或网络连接是否正常，然后重试。")
         
         # ==================== 文档管理浮窗 ====================
         if st.session_state.show_doc_manager:
