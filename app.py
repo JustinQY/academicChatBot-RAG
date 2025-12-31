@@ -197,9 +197,19 @@ def main():
                             # 清空上传器（通过 rerun）
                             st.rerun()
                         else:
-                            status.update(label="⚠️ 部分完成", state="error")
-                            st.warning("文件已保存但索引失败")
+                            # 索引失败，清理已保存的文件和元数据
+                            status.update(label="❌ 索引失败", state="error")
                             st.error(index_message)
+                            st.warning("正在清理已保存的文件...")
+                            
+                            # 删除文件和元数据
+                            cleanup_success, cleanup_msg = doc_manager.delete_document(metadata['file_id'])
+                            if cleanup_success:
+                                st.info("✅ 已清理失败的上传")
+                            else:
+                                st.warning(f"⚠️ 清理时出现问题：{cleanup_msg}")
+                            
+                            st.info("💡 提示：请检查文件是否损坏或网络连接是否正常，然后重试。")
         
         # ==================== 文档管理浮窗 ====================
         if st.session_state.show_doc_manager:
@@ -377,4 +387,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
