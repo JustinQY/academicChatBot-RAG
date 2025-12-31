@@ -21,3 +21,10 @@ config.json
 
 # VS Code
 .vscode/
+
+# User uploads and vector database
+UserUploads/
+chroma_db/
+
+# Document metadata
+document_metadata.json

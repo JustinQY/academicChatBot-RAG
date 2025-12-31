@@ -1,18 +1,29 @@
+"""
+学术聊天机器人 - 主应用
+支持基础课程材料问答 + 用户文档上传
+"""
+
 import streamlit as st
-import os, json
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
-from langchain_community.vectorstores import Chroma
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough, RunnableLambda
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+import os
+import json
+from datetime import datetime
+from document_manager import DocumentManager
+from rag_system import DualVectorStoreRAG
+from utils import format_file_size, get_directory_size
 
 # 页面配置
-st.set_page_config(page_title="学术聊天机器人", page_icon="🎓", layout="wide")
-st.title("🎓 学术课程问答助手")
-st.markdown("基于深度学习课程材料的RAG问答系统")
+st.set_page_config(
+    page_title="学术聊天机器人", 
+    page_icon="🎓", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# 加载配置 - 支持多种方式：Streamlit Secrets、环境变量、config.json
+st.title("🎓 学术课程问答助手")
+st.markdown("基于深度学习课程材料的RAG问答系统 + 支持自定义文档上传")
+
+
+# ==================== 配置加载 ====================
 @st.cache_resource
 def load_config():
     """
@@ -21,19 +32,15 @@ def load_config():
     2. 环境变量
     3. config.json 文件（本地开发）
     """
-    
     # 获取 OpenAI API Key
     openai_key = None
     if hasattr(st, 'secrets') and 'OPENAI_API_KEY' in st.secrets:
-        # 方式1: Streamlit Secrets (生产环境)
         openai_key = st.secrets['OPENAI_API_KEY']
         source = "Streamlit Secrets"
     elif 'OPENAI_API_KEY' in os.environ:
-        # 方式2: 环境变量
         openai_key = os.environ['OPENAI_API_KEY']
         source = "Environment Variable"
     else:
-        # 方式3: config.json (本地开发)
         try:
             with open("config.json", "r", encoding="utf-8") as f:
                 config = json.load(f)
@@ -47,6 +54,7 @@ def load_config():
         ❌ 未找到 OpenAI API Key！
         
         请通过以下任一方式配置：
+        
         **1. Streamlit Cloud 部署（推荐）：**
         - 在 Streamlit Cloud 设置中添加 Secrets
         - 格式: `OPENAI_API_KEY = "your-key-here"`
@@ -93,107 +101,177 @@ def load_config():
         'langsmith_enabled': bool(langchain_key)
     }
 
-# 初始化RAG系统
+
+# ==================== 初始化 RAG 系统 ====================
 @st.cache_resource
-def initialize_rag():
+def initialize_rag_system():
+    """初始化双向量库 RAG 系统（基础库缓存）"""
+    rag = DualVectorStoreRAG()
+    
+    # 初始化基础向量库（缓存）
+    with st.spinner("📚 正在初始化基础知识库..."):
+        base_doc_count = rag.initialize_base_vectorstore()
+    
+    # 初始化用户向量库（不缓存，动态）
+    rag.initialize_user_vectorstore()
+    
+    return rag, base_doc_count
+
+
+# ==================== 初始化文档管理器 ====================
+def get_document_manager():
+    """获取文档管理器实例"""
+    if 'doc_manager' not in st.session_state:
+        st.session_state.doc_manager = DocumentManager()
+    return st.session_state.doc_manager
+
+
+# ==================== 主应用逻辑 ====================
+def main():
     try:
-        # 加载文档
-        loader = DirectoryLoader(
-            "CourseMaterials/deep_learning",
-            glob="*.pdf",
-            loader_cls=PyPDFLoader
-        )
-        docs = loader.load()
+        # 加载配置
+        config = load_config()
         
-        if not docs:
-            st.error("❌ 没有找到PDF文档，请确保 CourseMaterials/deep_learning 目录下有PDF文件！")
-            st.stop()
+        # 初始化 RAG 系统
+        rag_system, base_doc_count = initialize_rag_system()
+        st.success(f"✅ 系统已就绪！已加载 {base_doc_count} 个基础课程文档。")
         
-        # 分割文档
-        text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
-            chunk_size=300,
-            chunk_overlap=50
-        )
-        doc_splits = text_splitter.split_documents(docs)
+        # 初始化文档管理器
+        doc_manager = get_document_manager()
         
-        # 向量化
-        vectorstore = Chroma.from_documents(
-            documents=doc_splits,
-            embedding=OpenAIEmbeddings()
-        )
-        retriever = vectorstore.as_retriever(search_kwargs={'k': 3})
-        
-        # 构建RAG链
-        prompt_template = """You are a helpful assistant.
-Answer the question using ONLY the Context below.
-If the answer is not in the Context, say "I don't know based on the provided context."
-Context:
-{context}
-
-Question:
-{question}
-"""
-        prompt = ChatPromptTemplate.from_template(prompt_template)
-        llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
-        
-        def format_docs(docs):
-            parts = []
-            for i, d in enumerate(docs, 1):
-                src = d.metadata.get("source", "unknown_source")
-                page = d.metadata.get("page_label", d.metadata.get("page", "unknown_page"))
-                text = (d.page_content or "").strip()
-                parts.append(f"[{i}] ({src}, p.{page})\n{text}")
-            return "\n\n".join(parts)
-        
-        rag_chain = (
-            {
-                "context": retriever | RunnableLambda(format_docs),
-                "question": RunnablePassthrough()
-            }
-            | prompt
-            | llm
-        )
-        
-        return rag_chain, len(docs)
-    except Exception as e:
-        st.error(f"❌ 初始化RAG系统时出错: {str(e)}")
-        st.stop()
-
-# 主界面
-try:
-    config = load_config()
-    with st.spinner("🔄 正在初始化RAG系统，首次加载可能需要一些时间..."):
-        rag_chain, doc_count = initialize_rag()
-    st.success(f"✅ 系统已就绪！已加载 {doc_count} 个文档。")
-    
-    # 初始化会话状态来保存问答历史
-    if 'qa_history' not in st.session_state:
-        st.session_state.qa_history = []
-    
-    # 用户输入
-    question = st.text_area(
-        "💬 请输入你的问题：",
-        placeholder="例如: Can you list some of the hyperparameters in the FFN?",
-        height=100,
-        key="question_input"
-    )
-    
-    col1, col2, col3 = st.columns([1, 1, 4])
-    with col1:
-        ask_button = st.button("🚀 提问", type="primary", use_container_width=True)
-    with col2:
-        if st.button("🗑️ 清除历史", use_container_width=True):
+        # 初始化会话状态
+        if 'qa_history' not in st.session_state:
             st.session_state.qa_history = []
-            st.rerun()
-    
-    if ask_button:
-        if question.strip():
+        if 'show_doc_manager' not in st.session_state:
+            st.session_state.show_doc_manager = False
+        
+        # ==================== 文档上传区域 ====================
+        st.markdown("---")
+        st.markdown("### 📎 上传自定义文档")
+        
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            uploaded_file = st.file_uploader(
+                "上传 PDF 文档到知识库",
+                type=['pdf'],
+                help="支持 PDF 格式，单个文件最大 50MB",
+                key="pdf_uploader"
+            )
+        
+        with col2:
+            st.markdown("<br>", unsafe_allow_html=True)  # 对齐按钮
+            if st.button("📚 管理已上传文档", use_container_width=True):
+                st.session_state.show_doc_manager = not st.session_state.show_doc_manager
+        
+        # 处理文件上传
+        if uploaded_file is not None:
+            with st.spinner("⏳ 正在处理文档..."):
+                # 阶段1: 上传和保存文件
+                with st.status("📥 正在上传文件...", expanded=True) as status:
+                    st.write("验证文件格式和大小...")
+                    success, message, metadata = doc_manager.upload_document(uploaded_file)
+                    
+                    if not success:
+                        status.update(label="❌ 上传失败", state="error")
+                        st.error(message)
+                    else:
+                        st.write("✅ 文件保存成功")
+                        
+                        # 阶段2: 索引到向量库
+                        st.write("🔢 正在向量化文档...")
+                        index_success, index_message, chunk_count = rag_system.add_user_document(
+                            file_path=metadata['filepath'],
+                            original_filename=metadata['original_filename'],
+                            upload_time=metadata['upload_time'],
+                            file_size=metadata['size']
+                        )
+                        
+                        if index_success:
+                            # 标记为已索引
+                            doc_manager.mark_as_indexed(metadata['file_id'])
+                            status.update(label="✅ 文档处理完成", state="complete")
+                            st.success(f"🎉 {metadata['original_filename']} 已成功添加到知识库！")
+                            st.info(index_message)
+                            
+                            # 清空上传器（通过 rerun）
+                            st.rerun()
+                        else:
+                            status.update(label="⚠️ 部分完成", state="error")
+                            st.warning("文件已保存但索引失败")
+                            st.error(index_message)
+        
+        # ==================== 文档管理浮窗 ====================
+        if st.session_state.show_doc_manager:
+            with st.expander("📚 已上传文档管理", expanded=True):
+                documents = doc_manager.list_documents()
+                
+                if not documents:
+                    st.info("📭 还没有上传任何文档")
+                else:
+                    st.caption(f"共 {len(documents)} 个文档")
+                    
+                    for doc in documents:
+                        col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                        
+                        with col1:
+                            st.markdown(f"**📄 {doc['original_filename']}**")
+                        
+                        with col2:
+                            st.text(f"📦 {doc['size_formatted']}")
+                        
+                        with col3:
+                            st.text(f"🕐 {doc['upload_time']}")
+                        
+                        with col4:
+                            if st.button("🗑️", key=f"del_{doc['file_id']}", help="删除文档"):
+                                # 删除文件
+                                file_success, file_message = doc_manager.delete_document(doc['file_id'])
+                                
+                                # 从向量库删除
+                                vec_success, vec_message = rag_system.remove_user_document(
+                                    doc['original_filename']
+                                )
+                                
+                                if file_success:
+                                    st.success(file_message)
+                                    if vec_success:
+                                        st.info(vec_message)
+                                    else:
+                                        st.warning(vec_message)
+                                    st.rerun()
+                                else:
+                                    st.error(file_message)
+                        
+                        st.markdown("---")
+        
+        # ==================== 问答区域 ====================
+        st.markdown("---")
+        st.markdown("### 💬 提问")
+        
+        question = st.text_area(
+            "请输入你的问题：",
+            placeholder="例如: Can you list some of the hyperparameters in the FFN?",
+            height=100,
+            key="question_input"
+        )
+        
+        col1, col2, col3 = st.columns([1, 1, 4])
+        with col1:
+            ask_button = st.button("🚀 提问", type="primary", use_container_width=True)
+        with col2:
+            if st.button("🗑️ 清除历史", use_container_width=True):
+                st.session_state.qa_history = []
+                st.rerun()
+        
+        if ask_button and question.strip():
             with st.spinner("🤔 正在思考中..."):
                 try:
+                    # 创建 RAG 链并查询
+                    rag_chain = rag_system.create_rag_chain(k=3)
                     response = rag_chain.invoke(question)
                     
-                    # 将当前问答添加到历史记录
-                    from datetime import datetime
+                    # 保存到历史记录
                     qa_entry = {
                         'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         'question': question.strip(),
@@ -206,67 +284,97 @@ try:
                     st.info(response.content)
                     
                 except Exception as e:
-                    st.error(f"❌ 生成回答时出错: {str(e)}")
-        else:
+                    st.error(f"❌ 生成回答时出错：{str(e)}")
+        
+        elif ask_button:
             st.warning("⚠️ 请先输入问题")
-    
-    # 显示问答历史记录
-    if st.session_state.qa_history:
-        st.markdown("---")
-        st.markdown("## 📚 问答历史记录")
-        st.caption(f"共 {len(st.session_state.qa_history)} 条记录")
         
-        # 逆序显示（最新的在上面）
-        for idx, qa in enumerate(reversed(st.session_state.qa_history), 1):
-            with st.expander(f"🕐 {qa['timestamp']} - 问题 #{len(st.session_state.qa_history) - idx + 1}", expanded=(idx == 1)):
-                st.markdown(f"**❓ 问题：**")
-                st.write(qa['question'])
-                st.markdown(f"**💡 回答：**")
-                st.info(qa['answer'])
+        # ==================== 问答历史记录 ====================
+        if st.session_state.qa_history:
+            st.markdown("---")
+            st.markdown("## 📚 问答历史记录")
+            st.caption(f"共 {len(st.session_state.qa_history)} 条记录")
             
-    # 侧边栏
-    with st.sidebar:
-        st.header("📚 关于系统")
-        st.markdown("""
-        这是一个基于RAG（检索增强生成）的学术问答系统。
+            # 逆序显示（最新的在上面）
+            for idx, qa in enumerate(reversed(st.session_state.qa_history), 1):
+                with st.expander(
+                    f"🕐 {qa['timestamp']} - 问题 #{len(st.session_state.qa_history) - idx + 1}", 
+                    expanded=(idx == 1)
+                ):
+                    st.markdown(f"**❓ 问题：**")
+                    st.write(qa['question'])
+                    st.markdown(f"**💡 回答：**")
+                    st.info(qa['answer'])
         
-        **功能特点：**
-        - 📖 自动读取深度学习课程PDF文档
-        - 🔍 智能检索相关内容片段
-        - 💡 基于OpenAI GPT-3.5生成准确答案
-        - ⚡ 使用LangChain构建RAG流程
-        - 🎯 仅基于课程材料回答，避免虚构信息
-        - 📝 自动保存问答历史记录
-        
-        **使用说明：**
-        1. 在输入框中输入你的问题
-        2. 点击"提问"按钮
-        3. 等待系统检索并生成答案
-        4. 历史记录会自动保存在下方
-        5. 点击"清除历史"可以清空所有记录
-        
-        **示例问题：**
-        - Can you list some of the hyperparameters in the FFN?
-        - What is backpropagation?
-        - Explain gradient descent
+        # ==================== 侧边栏 ====================
+        with st.sidebar:
+            st.header("📚 关于系统")
+            st.markdown("""
+            这是一个基于RAG（检索增强生成）的学术问答系统。
+            
+            **功能特点：**
+            - 📖 自动读取深度学习课程PDF文档
+            - 📎 **支持用户上传自定义PDF文档**
+            - 🔍 智能检索相关内容片段
+            - 💡 基于OpenAI GPT-3.5生成准确答案
+            - ⚡ 使用LangChain构建RAG流程
+            - 🎯 仅基于课程材料回答，避免虚构信息
+            - 📝 自动保存问答历史记录
+            - 🗂️ 文档来源标记（课程材料 vs 用户文档）
+            
+            **使用说明：**
+            1. 上传你的 PDF 文档（可选）
+            2. 在输入框中输入你的问题
+            3. 点击"提问"按钮
+            4. 等待系统检索并生成答案
+            5. 历史记录会自动保存在下方
+            6. 点击"管理已上传文档"查看和删除文档
+            
+            **示例问题：**
+            - Can you list some of the hyperparameters in the FFN?
+            - What is backpropagation?
+            - Explain gradient descent
+            """)
+            
+            st.divider()
+            
+            st.header("⚙️ 技术栈")
+            st.markdown("""
+            - **前端**: Streamlit
+            - **LLM**: OpenAI GPT-3.5
+            - **向量数据库**: Chroma (持久化)
+            - **框架**: LangChain
+            - **文档处理**: PyPDF
+            - **架构**: 双向量库（基础 + 用户）
+            """)
+            
+            st.divider()
+            
+            # 存储使用情况
+            try:
+                upload_dir = "UserUploads"
+                if os.path.exists(upload_dir):
+                    total_size = get_directory_size(upload_dir)
+                    st.metric(
+                        label="📊 存储使用",
+                        value=format_file_size(total_size)
+                    )
+            except:
+                pass
+            
+            st.markdown("---")
+            st.caption("💡 提示：首次使用时系统会加载所有PDF文档并进行向量化，可能需要几分钟时间。")
+    
+    except Exception as e:
+        st.error(f"❌ 系统错误：{str(e)}")
+        st.info("""
+        请检查：
+        - OpenAI API Key 是否正确
+        - CourseMaterials/deep_learning 目录下是否有PDF文件
+        - 网络连接是否正常
         """)
-        
-        st.divider()
-        
-        st.header("⚙️ 技术栈")
-        st.markdown("""
-        - **前端**: Streamlit
-        - **LLM**: OpenAI GPT-3.5
-        - **向量数据库**: Chroma
-        - **框架**: LangChain
-        - **文档处理**: PyPDF
-        """)
-        
-        st.divider()
-        
-        st.markdown("---")
-        st.caption("💡 提示：首次使用时系统会加载所有PDF文档并进行向量化，可能需要几分钟时间。之后使用Streamlit缓存会加快响应速度。")
-        
-except Exception as e:
-    st.error(f"❌ 系统错误: {str(e)}")
-    st.info("请检查：\n- config.json 文件是否存在\n- OpenAI API Key 是否正确\n- CourseMaterials/deep_learning 目录下是否有PDF文件")
+
+
+if __name__ == "__main__":
+    main()
+
