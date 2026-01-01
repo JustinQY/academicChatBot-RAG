@@ -9,6 +9,7 @@ langchain-core
 
 openai
 chromadb
+langchain_chroma
 beautifulsoup4
 requests
 python-dotenv

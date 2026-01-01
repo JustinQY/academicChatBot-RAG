@@ -290,7 +290,7 @@ class DualVectorStoreRAG:
                     # 检查用户库是否有内容
                     collection = self.user_vectorstore._collection
                     if collection.count() > 0:
-                        user_docs = self.user_vectorstore.similarity_search(query, k=k)
+                        user_docs = self.user_vectorstore.similarity_search(query, k=10)
                         all_docs.extend(user_docs)
                 except Exception as e:
                     # 用户库可能为空，这是正常的
@@ -298,7 +298,7 @@ class DualVectorStoreRAG:
 
             # TODO: 需要添加 reranking
             # 返回前 k 个文档（可以添加重新排序逻辑）
-            return all_docs[:2*k]
+            return all_docs[:k+10]
         
         # 格式化文档，添加来源标记
         def format_docs_with_source(docs: List[Document]) -> str:
