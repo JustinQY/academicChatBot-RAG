@@ -3,17 +3,23 @@ RAG 系统核心模块
 实现双向量库架构、文档索引、检索功能
 """
 
-import os
+import os, logging
 from typing import List, Tuple, Optional
 import streamlit as st
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain.schema import Document
+from langchain_core.documents import Document
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s"
+)
+
+logger = logging.getLogger(__name__)
 
 def loadAndIndexFiles(
     file_paths: List[str],
@@ -77,7 +83,7 @@ class DualVectorStoreRAG:
         base_persist_dir: str = "./chroma_db/base",
         user_persist_dir: str = "./chroma_db/user",
         base_docs_dir: str = "CourseMaterials/deep_learning",
-        embedding_model: str = "text-embedding-3-small"
+        # embedding_model: str = "text-embedding-3-large"
     ):
         """
         初始化双向量库 RAG 系统
@@ -91,14 +97,14 @@ class DualVectorStoreRAG:
         self.base_persist_dir = base_persist_dir
         self.user_persist_dir = user_persist_dir
         self.base_docs_dir = base_docs_dir
-        self.embedding_model = embedding_model
+        # self.embedding_model = embedding_model
         
         # 创建目录
         os.makedirs(base_persist_dir, exist_ok=True)
         os.makedirs(user_persist_dir, exist_ok=True)
         
         # 初始化 embedding 函数
-        self.embedding_function = OpenAIEmbeddings(model=embedding_model)
+        self.embedding_function = OpenAIEmbeddings()
         
         # 初始化向量库
         self.base_vectorstore = None
@@ -269,12 +275,15 @@ class DualVectorStoreRAG:
             
             # 从基础库检索
             if self.base_vectorstore:
+                # logger.info("Base vectorstore detected!")
                 try:
                     base_docs = self.base_vectorstore.similarity_search(query, k=k)
                     all_docs.extend(base_docs)
                 except Exception as e:
                     st.warning(f"⚠️ 基础库检索失败：{str(e)}")
-            
+
+            # logger.info(f"All docs num:\n {len(all_docs)}")
+
             # 从用户库检索
             if self.user_vectorstore:
                 try:
@@ -286,9 +295,10 @@ class DualVectorStoreRAG:
                 except Exception as e:
                     # 用户库可能为空，这是正常的
                     pass
-            
+
+            # TODO: 需要添加 reranking
             # 返回前 k 个文档（可以添加重新排序逻辑）
-            return all_docs[:k]
+            return all_docs[:2*k]
         
         # 格式化文档，添加来源标记
         def format_docs_with_source(docs: List[Document]) -> str:
