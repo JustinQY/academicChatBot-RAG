@@ -2,6 +2,9 @@
 
 This is an online system built for academic question answering based on the materials in the library and users update.
 
+Try my system here:
+https://macacademychatbot.streamlit.app/
+
 ## Functions
 
 - **Academic Materials Batch Uploading**
