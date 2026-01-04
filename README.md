@@ -1,44 +1,76 @@
-# 🎓 Academic ChatBot - RAG
+# Academy QA System for McMaster Graduates V1.0
 
-基于RAG（检索增强生成）技术的学术课程问答系统，可以智能地回答关于深度学习课程材料的问题。
+This is an online system built for academic question answering based on the materials in the library and users update.
 
-## ✨ 功能特点
+## Functions
 
-- 📖 **PDF文档处理**：自动读取和解析深度学习课程PDF
-- 🔍 **智能检索**：使用向量数据库进行语义检索
-- 💡 **AI问答**：基于OpenAI GPT-3.5生成准确答案
-- 🎯 **可靠性**：仅基于课程材料回答，避免虚构信息
-- 🖥️ **Web界面**：提供友好的Streamlit交互界面
+- **Academic Materials Batch Uploading**
+- **Uploaded Documents Management _(check and delete)_**
+- **Question Answering in a few seconds**
+- **Questions History Management _(check and clear)_**
 
-## 🛠️ 技术栈
+## Technical Stack
 
-- **LLM**: OpenAI GPT-3.5-turbo
-- **向量数据库**: Chroma
-- **框架**: LangChain
-- **前端**: Streamlit
-- **文档处理**: PyPDF
+- **LLM**: OpenAI GPT-3.5-turbo (question answering), OpenAI text-embedding-3-large (embedding)
+- **Vector Database**: Chroma
+- **Framework**: LangChain
+- **Front End**: Streamlit
+- **Material Loading**: PyPDFLoader
 
-## 📦 安装
+## Project Structure
 
-1. **克隆仓库**
+```
+academicChatBot-RAG/
+├── app.py                      # Streamlit Web App
+├── requirements.txt            # Project Dependencies
+├── config.example.json         # Example of config.json
+└── chroma_db
+    ├── base                    # Default materials
+    └── user                    # Uploaded materials
+```
+
+## Example Questions
+- Can you list some of the hyperparameters in the FFN?
+- What is backpropagation?
+- Explain the concept of gradient descent.
+
+## Procedure Under the Hood
+
+1. **Documents Loading**：read and load all pdf files from chroma_db/base and chroma_db/user
+2. **Split**：Split files into chunks with maximum length of 300 tokens and 50 tokens overlap.
+3. **Vectorization**：Vectorize and Store the file chunks into the Chrome vectordatabase.
+4. **Retrieval**：Retrieve top 10 most related file chunks according to the question.
+5. **Generation**：Custom prompt with the retrieval chunks and user question, generate answer by LLM.
+
+## Highlights
+
+- **PDF Documents Process**：Upload, analyze and process academic pdf files.
+- **Semantic Retrieval**：Retrieving reliable files in the vectordatabases. (Embedding process powered by OpenAI Model: text-embedding-3-large)
+- **AI Question Answering**：Generate answers by OpenAI: GPT-3.5-turbo.
+- **Reliable Information**：For now the answer given only based on all the materials in the database.
+- **Web Frontend UI**：Friendly front end interaction UI powered by Streamlit.
+
+
+## Installation
+
+1. **Clone the Repo**
 ```bash
 git clone https://github.com/JustinQY/academicChatBot-RAG.git
 cd academicChatBot-RAG
 ```
 
-2. **安装依赖**
+2. **Install Dependencies**
 ```bash
 pip install -r requirements.txt
 ```
 
-3. **配置API密钥**
+3. **Config API Keys**
+Create `config.json` and insert your API keys based on the `config.example.json`
 
-复制示例配置文件并填入你的API密钥：
 ```bash
 cp config.example.json config.json
 ```
 
-编辑 `config.json`：
 ```json
 {
   "OpenAIAPIKey": "your-openai-api-key",
@@ -46,95 +78,31 @@ cp config.example.json config.json
 }
 ```
 
-## 🚀 使用方法
+## Run
 
-### 方式1: Web界面（推荐）
+### 1: Web（Recommand）
 
-运行Streamlit应用：
 ```bash
 streamlit run app.py
 ```
 
-然后在浏览器中访问 `http://localhost:8501`
+### 2: Python Script
 
-### 方式2: Python脚本
-
-直接运行原始脚本：
 ```bash
 python academicChatBot.py
 ```
 
-## 📁 项目结构
+### Document Requirements
 
-```
-academicChatBot-RAG/
-├── app.py                      # Streamlit Web应用
-├── academicChatBot.py          # 原始Python脚本
-├── requirements.txt            # 项目依赖
-├── config.example.json         # 配置文件示例
-├── config.json                 # API密钥配置（需自行创建）
-└── CourseMaterials/
-    └── deep_learning/          # 存放PDF课程材料
-        └── *.pdf
-```
+- Only accept .pdf type files.
+- Suggested size for single file is 50MB.
 
-## 💬 示例问题
 
-- Can you list some of the hyperparameters in the FFN?
-- What is backpropagation?
-- Explain the concept of gradient descent
-- How does the attention mechanism work?
+## Notes
 
-## 🔧 工作原理
+- ⚠️ It takes several seconds to process default documents for the first time of cold loading.
+- ⚠️ Keep an eye out on your OpenAI API Usage. [check it here](https://platform.openai.com/settings/organization/usage)
 
-1. **文档加载**：从 `CourseMaterials/deep_learning` 目录读取PDF文档
-2. **文本分割**：将文档分割成300个token的小块，重叠50个token
-3. **向量化**：使用OpenAI Embeddings将文本转换为向量并存储在Chroma
-4. **检索**：用户提问时，检索最相关的3个文本块
-5. **生成答案**：将检索到的内容作为上下文，使用GPT-3.5生成答案
-
-## ⚙️ 配置说明
-
-### API密钥
-
-- **OpenAI API Key**: 必需，用于文本嵌入和答案生成
-- **LangChain API Key**: 可选，用于追踪和调试
-
-### 文档要求
-
-- 支持PDF格式
-- 建议文件大小不超过50MB
-- 放置在 `CourseMaterials/deep_learning/` 目录下
-
-### 参数调整
-
-在 `app.py` 或 `academicChatBot.py` 中可以调整：
-
-- `chunk_size`: 文本分割大小（默认300）
-- `chunk_overlap`: 文本重叠大小（默认50）
-- `k`: 检索文档数量（默认3）
-- `temperature`: LLM温度参数（默认0，更保守）
-
-## 📝 注意事项
-
-- ⚠️ 首次运行会进行文档向量化，可能需要几分钟
-- ⚠️ 确保有足够的OpenAI API配额
-- ⚠️ `config.json` 包含敏感信息，不要提交到Git
-- 💡 Streamlit会缓存向量数据库，后续使用更快
-
-## 🤝 贡献
-
-欢迎提交Issue和Pull Request！
-
-## 📄 License
-
-MIT License
-
-## 👤 作者
-
+## Owner
 JustinQY
-
----
-
-**Powered by LangChain 🦜🔗 & OpenAI 🤖 & Streamlit 🎈**
 
