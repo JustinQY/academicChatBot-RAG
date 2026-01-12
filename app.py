@@ -19,8 +19,8 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.title("🎓 学术课程问答助手")
-st.markdown("基于深度学习课程材料的RAG问答系统 + 支持自定义文档上传")
+st.title("📑 McMaster Academic Knowledge QA System V1.0")
+st.markdown("Based on course materials default and uploaded by users and RAG.")
 
 
 # ==================== 配置加载 ====================
@@ -134,7 +134,7 @@ def main():
         
         # 初始化 RAG 系统
         rag_system, base_doc_count = initialize_rag_system()
-        st.success(f"✅ 系统已就绪！已加载 {base_doc_count} 个基础课程文档。")
+        st.success(f"✌️ System All Set!  {base_doc_count} default docs loaded!")
         
         # 初始化文档管理器
         doc_manager = get_document_manager()
@@ -147,22 +147,22 @@ def main():
         
         # ==================== 文档上传区域 ====================
         st.markdown("---")
-        st.markdown("### 📎 上传自定义文档")
+        st.markdown("### 🛜 Upload Your Documents Here")
         
         col1, col2 = st.columns([3, 1])
         
         with col1:
             uploaded_files = st.file_uploader(
-                "上传 PDF 文档到知识库（支持批量上传）",
+                "Upload your PDF files to library (batch uploading available)",
                 type=['pdf'],
                 accept_multiple_files=True,
-                help="支持 PDF 格式，单个文件最大 50MB，可同时选择多个文件",
+                help="PDF files only, allowed to select multiple files with a 50 MB size limit for each one.",
                 key="pdf_uploader"
             )
         
         with col2:
             st.markdown("<br>", unsafe_allow_html=True)  # 对齐按钮
-            if st.button("📚 管理已上传文档", use_container_width=True):
+            if st.button("Manage Uploaded Docs", use_container_width=True):
                 st.session_state.show_doc_manager = not st.session_state.show_doc_manager
         
         # ==================== 批量文件上传处理 ====================
@@ -341,7 +341,7 @@ def main():
                             st.text(f"🕐 {doc['upload_time']}")
                         
                         with col4:
-                            if st.button("🗑️", key=f"del_{doc['file_id']}", help="删除文档"):
+                            if st.button("🗑️", key=f"del_{doc['file_id']}", help="Delete"):
                                 # 删除文件
                                 file_success, file_message = doc_manager.delete_document(doc['file_id'])
                                 
@@ -364,25 +364,25 @@ def main():
         
         # ==================== 问答区域 ====================
         st.markdown("---")
-        st.markdown("### 💬 提问")
+        st.markdown("### 🙋 Question")
         
         question = st.text_area(
-            "请输入你的问题：",
-            placeholder="例如: Can you list some of the hyperparameters in the FFN?",
+            f"Please enter your question here: \n (**Note: The system currently answers questions only based on materials in the database, it'll answer *I don't know based on the provided context.* if it failed to find answer from the docs.**)",
+            placeholder="Can you list some of the hyperparameters in the FFN?",
             height=100,
             key="question_input"
         )
         
         col1, col2, col3 = st.columns([1, 1, 4])
         with col1:
-            ask_button = st.button("🚀 提问", type="primary", use_container_width=True)
+            ask_button = st.button("Shoot", type="primary", use_container_width=True)
         with col2:
-            if st.button("🗑️ 清除历史", use_container_width=True):
+            if st.button("Clean The History", use_container_width=True):
                 st.session_state.qa_history = []
                 st.rerun()
         
         if ask_button and question.strip():
-            with st.spinner("🤔 正在思考中..."):
+            with st.spinner("(ー_ーゞ thinking~~~"):
                 try:
                     # 创建 RAG 链并查询
                     rag_chain = rag_system.create_rag_chain(k=3)
@@ -397,57 +397,57 @@ def main():
                     st.session_state.qa_history.append(qa_entry)
                     
                     # 显示当前回答
-                    st.markdown("### 📝 当前回答：")
+                    st.markdown("### Answer")
                     st.info(response.content)
                     
                 except Exception as e:
-                    st.error(f"❌ 生成回答时出错：{str(e)}")
+                    st.error(f"😭 Get an error: {str(e)}")
         
         elif ask_button:
-            st.warning("⚠️ 请先输入问题")
+            st.warning("🤔 Got nothing to ask yet?")
         
         # ==================== 问答历史记录 ====================
         if st.session_state.qa_history:
             st.markdown("---")
-            st.markdown("## 📚 问答历史记录")
-            st.caption(f"共 {len(st.session_state.qa_history)} 条记录")
+            st.markdown("## QA History")
+            st.caption(f"You got {len(st.session_state.qa_history)} histories in total.")
             
             # 逆序显示（最新的在上面）
             for idx, qa in enumerate(reversed(st.session_state.qa_history), 1):
                 with st.expander(
-                    f"🕐 {qa['timestamp']} - 问题 #{len(st.session_state.qa_history) - idx + 1}", 
+                    f"🕐 {qa['timestamp']} - Question #{len(st.session_state.qa_history) - idx + 1}",
                     expanded=(idx == 1)
                 ):
-                    st.markdown(f"**❓ 问题：**")
+                    st.markdown(f"**Question:**")
                     st.write(qa['question'])
-                    st.markdown(f"**💡 回答：**")
+                    st.markdown(f"**Answer:**")
                     st.info(qa['answer'])
         
         # ==================== 侧边栏 ====================
         with st.sidebar:
-            st.header("📚 关于系统")
+            st.header("About")
             st.markdown("""
-            这是一个基于RAG（检索增强生成）的学术问答系统。
+            This is a academic QA system on the strength of RAG.
             
-            **功能特点：**
-            - 📖 自动读取深度学习课程PDF文档
-            - 📎 **支持用户上传自定义PDF文档**
-            - 🔍 智能检索相关内容片段
-            - 💡 基于OpenAI GPT-3.5生成准确答案
-            - ⚡ 使用LangChain构建RAG流程
-            - 🎯 仅基于课程材料回答，避免虚构信息
-            - 📝 自动保存问答历史记录
-            - 🗂️ 文档来源标记（课程材料 vs 用户文档）
+            **Highlights:**
+            - Supports users to upload custom docs.
+            - Load, analyze and process pdf type of docs.
+            - Performs semantic retrieval to identify the most relevant content chunks.
+            - Generates accurate answers using OpenAI GPT-3.5 within a RAG pipeline.
+            - Implements a LangChain-based Retrieval-Augmented Generation workflow.
+            - Restricts responses only based on course materials to minimize hallucinations.
+            - Automatically stores QA history for session continuity.
+            - Clearly distinguishes content sources (default vs. user-uploaded).
             
-            **使用说明：**
-            1. 上传你的 PDF 文档（可选）
-            2. 在输入框中输入你的问题
-            3. 点击"提问"按钮
-            4. 等待系统检索并生成答案
-            5. 历史记录会自动保存在下方
-            6. 点击"管理已上传文档"查看和删除文档
-            
-            **示例问题：**
+            **Guide:**
+            1. Upload your PDF docs (if you'd like to ask questions related to them).
+            2. Enter your question in the input field.
+            3. Click the “Shoot” button.
+            4. Wait for the answer.
+            5. Previous questions and answers will be automatically saved below.
+            6. Click “Manage Uploaded Docs” to view or remove uploaded files.
+
+            **Sample Questions: **
             - Can you list some of the hyperparameters in the FFN?
             - What is backpropagation?
             - Explain gradient descent
@@ -455,14 +455,14 @@ def main():
             
             st.divider()
             
-            st.header("⚙️ 技术栈")
+            st.header("🧑‍💻 Tech Stack:")
             st.markdown("""
-            - **前端**: Streamlit
+            - **Front End**: Streamlit by Codegen
             - **LLM**: OpenAI GPT-3.5
-            - **向量数据库**: Chroma (持久化)
-            - **框架**: LangChain
-            - **文档处理**: PyPDF
-            - **架构**: 双向量库（基础 + 用户）
+            - **Vector Database**: Chroma (Locally Persistence)
+            - **Framework**: LangChain
+            - **Docs Processing**: PyPDF
+            - **Architecture**: Double Vector Database (Default + User)
             """)
             
             st.divider()
@@ -473,14 +473,14 @@ def main():
                 if os.path.exists(upload_dir):
                     total_size = get_directory_size(upload_dir)
                     st.metric(
-                        label="📊 存储使用",
+                        label="📊 Data Uploaded",
                         value=format_file_size(total_size)
                     )
             except:
                 pass
             
             st.markdown("---")
-            st.caption("💡 提示：首次使用时系统会加载所有PDF文档并进行向量化，可能需要几分钟时间。")
+            st.caption("🔔 Note: Initial document loading and vectorization may take a few moments on first use.")
     
     except Exception as e:
         st.error(f"❌ 系统错误：{str(e)}")
