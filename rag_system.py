@@ -82,7 +82,7 @@ class DualVectorStoreRAG:
         self,
         base_persist_dir: str = "./chroma_db/base",
         user_persist_dir: str = "./chroma_db/user",
-        base_docs_dir: str = "CourseMaterials/deep_learning",
+        base_docs_dir: str = "CourseMaterials",
         # embedding_model: str = "text-embedding-3-large"
     ):
         """
